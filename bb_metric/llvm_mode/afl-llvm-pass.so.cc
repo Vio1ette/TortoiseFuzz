@@ -61,16 +61,19 @@ namespace {
 
 }
 
-char AFLCoverage::ID = 0;
+char AFLCoverage::ID = 0; //初始化PassID，LLVM使用ID的地址来标识Pass，所以ID的值并不重要
 
 bool AFLCoverage::runOnModule(Module &M) {
 
-  LLVMContext &C = M.getContext();
+  LLVMContext &C = M.getContext(); //context，存储管理全局数据
+  //getContext返回一个类引用，用一个类引用接，没问题啊
 
-  IntegerType *Int8Ty  = IntegerType::getInt8Ty(C);
-  IntegerType *Int32Ty = IntegerType::getInt32Ty(C);
+  //语法是语法，逻辑是逻辑，学语法的时候专心学语法，看逻辑的时候主要看逻辑，就别纠结于语法细节
 
-  /* Show a banner */
+  IntegerType *Int8Ty  = IntegerType::getInt8Ty(C); //搞了半天，这是创建一个新的整数啊，创建一个8位宽的整数
+  IntegerType *Int32Ty = IntegerType::getInt32Ty(C);//创建一个32位宽的整数
+
+  /* Show a banner */ //一个口号
 
   char be_quiet = 0;
 
@@ -97,8 +100,12 @@ bool AFLCoverage::runOnModule(Module &M) {
      __afl_prev_loc is thread-local. */
 
   GlobalVariable *AFLMapPtr =
-      new GlobalVariable(M, PointerType::get(Int8Ty, 0), false,
-                         GlobalValue::ExternalLinkage, 0, "__afl_area_ptr");
+      new GlobalVariable(/*Module=*/M, 
+                         /*Type=*/PointerType::get(Int8Ty, 0), 
+                         /*isConstant=*/false,
+                         /*Linkage=*/GlobalValue::ExternalLinkage, 
+                         /*Initializer=*/0,  //has Initializer, specified below
+                         /*Name=*/"__afl_area_ptr"); 
 
   GlobalVariable *AFLMemWritePtr = 
       new GlobalVariable(M, PointerType::get(Int32Ty, 0), false,
@@ -120,12 +127,13 @@ bool AFLCoverage::runOnModule(Module &M) {
       int mem_read_cnt = 0;
       int mem_write_cnt= 0;
 
-      BasicBlock::iterator IP = BB.getFirstInsertionPt();
+      BasicBlock::iterator IP = BB.getFirstInsertionPt(); 
+      //返回这个基本块中适合插入non-PHI指令的第一条指令(跳过所有PHI)【PHI用来选择操作哪一个版本的变量】
       IRBuilder<> IRB(&(*IP));
 
       if (AFL_R(100) >= inst_ratio) continue;
 
-      for (auto Inst = BB.begin(); Inst != BB.end(); Inst++) {
+      for (auto Inst = BB.begin(); Inst != BB.end(); Inst++) { //基本块的迭代器指向每条指令
         Instruction &inst = *Inst;
 
         if(inst.mayReadFromMemory()){
@@ -143,35 +151,41 @@ bool AFLCoverage::runOnModule(Module &M) {
 
       unsigned int cur_loc = AFL_R(MAP_SIZE);
 
-      ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc);
+      ConstantInt *CurLoc = ConstantInt::get(Int32Ty, cur_loc); //初始化一个指针指向这个int
 
       /* Load prev_loc */
 
-      LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc);
-      PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-      Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty());
+      LoadInst *PrevLoc = IRB.CreateLoad(AFLPrevLoc); //从 AFLPrevLoc 取值
+      PrevLoc->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None)); 
+      //第一个参数是元数据的类型，第二个参数是要添加元数据的目标节点
+      // C 是这个 module 的 context，get 返回 static MDTuple*
+      
+      
+      Value *PrevLocCasted = IRB.CreateZExt(PrevLoc, IRB.getInt32Ty()); // 转换 PrevLoc 的类型
 
       /* Load SHM pointer */
 
       LoadInst *MapPtr = IRB.CreateLoad(AFLMapPtr);
       MapPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
       Value *MapPtrIdx =
-          IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
+          IRB.CreateGEP(MapPtr, IRB.CreateXor(PrevLocCasted, CurLoc)); //相当于数组取值，MapPtr[PrevLoc^Curloc]
+      //并通过CreateGEP函数来获取共享内存里指定index的地址
+      //这个index通过cur_loc和prev_loc取xor计算得到。
 
       /* Update bitmap */
 
-      LoadInst *Counter = IRB.CreateLoad(MapPtrIdx);
+      LoadInst *Counter = IRB.CreateLoad(MapPtrIdx); //取出 MapPtrIdx 这个共享内存地址的值
       Counter->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-      Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1));
+      Value *Incr = IRB.CreateAdd(Counter, ConstantInt::get(Int8Ty, 1)); // 加 1
       IRB.CreateStore(Incr, MapPtrIdx)
-          ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+          ->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));  // 写回
 
       //Load and update mem read/write map
       if(mem_read_cnt > 0){
         LoadInst *MemReadPtr = IRB.CreateLoad(AFLMemReadPtr);
         MemReadPtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
-        Value *MemReadPtrIdx = IRB.CreateGEP(MemReadPtr, IRB.CreateXor(PrevLocCasted, CurLoc));
-
+        //破案了，是这条边的内存读计数，因为下标也用的是 prevLoc^curLoc
+        Value *MemReadPtrIdx = IRB.CreateGEP(MemReadPtr, IRB.CreateXor(PrevLocCasted, CurLoc)); 
         LoadInst *MemReadCount = IRB.CreateLoad(MemReadPtrIdx);
         MemReadCount->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
         Value *MemReadIncr = IRB.CreateAdd(MemReadCount, ConstantInt::get(Int32Ty, mem_read_cnt));
@@ -181,6 +195,7 @@ bool AFLCoverage::runOnModule(Module &M) {
       if(mem_write_cnt > 0){
         LoadInst *MemWritePtr = IRB.CreateLoad(AFLMemWritePtr);
         MemWritePtr->setMetadata(M.getMDKindID("nosanitize"), MDNode::get(C, None));
+        //同样地，内存写计数
         Value *MemWritePtrIdx = IRB.CreateGEP(MemWritePtr, IRB.CreateXor(PrevLocCasted, CurLoc));
       
         LoadInst *MemWriteCount = IRB.CreateLoad(MemWritePtrIdx);
@@ -217,7 +232,7 @@ bool AFLCoverage::runOnModule(Module &M) {
 
 }
 
-
+//注册自定义类 registerAFLPass，
 static void registerAFLPass(const PassManagerBuilder &,
                             legacy::PassManagerBase &PM) {
 
