@@ -1327,7 +1327,7 @@ static void update_bitmap_score(struct queue_entry* q) {
 
   for (i = 0; i < MAP_SIZE; i++)
 
-    if (trace_bits[i]) {
+    if (trace_bits[i]) { // 当前种子执行到的边
 
       if (top_rated[i]) {
         /* TortoiseFuzz mode, 
@@ -1335,7 +1335,7 @@ static void update_bitmap_score(struct queue_entry* q) {
           and replace the original top_rate*/
         if (TF_switch) {
             /* log the top rate of syscall count */
-            if (max_funcall[i] > funcall_bits[i]) continue;
+            if (max_funcall[i] > funcall_bits[i]) continue; //怎么从共享内存中得到这个？
 
             if (max_funcall[i] == funcall_bits[i]) func_not_favored = 1;
 
@@ -1441,9 +1441,9 @@ static void cull_queue(void) {
     q = q->next;
   }
 
-  if (TF_switch) {
+  if (TF_switch) { 
     
-    for (i = 0; i < MAP_SIZE; i++) {
+    for (i = 0; i < MAP_SIZE; i++) { //把还没有被 fuzz 过的都标记为 favored
 
       if (top_rated[i]) {
 

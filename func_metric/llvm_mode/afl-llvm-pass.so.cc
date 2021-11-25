@@ -146,8 +146,8 @@ bool AFLCoverage::runOnModule(Module &M) {
       for (auto Inst = BB.begin(); Inst != BB.end(); Inst++) {
         Instruction &inst = *Inst;
 
-        if(CallInst* call_inst = dyn_cast<CallInst>(&inst)) {
-          Function* fn = call_inst->getCalledFunction();
+        if(CallInst* call_inst = dyn_cast<CallInst>(&inst)) { //如果是函数调用指令
+          Function* fn = call_inst->getCalledFunction(); 
           if(fn == NULL){
             Value *v = call_inst->getCalledValue();
             fn = dyn_cast<Function>(v->stripPointerCasts());

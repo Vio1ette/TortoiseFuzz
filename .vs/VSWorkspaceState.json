@@ -1,0 +1,13 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\bb_metric",
+    "\\bb_metric\\llvm_mode",
+    "\\func_metric",
+    "\\func_metric\\llvm_mode",
+    "\\loop_metric",
+    "\\loop_metric\\llvm_mode"
+  ],
+  "SelectedNode": "\\func_metric\\llvm_mode\\afl-llvm-pass.so.cc",
+  "PreviewInSolutionExplorer": false
+}
